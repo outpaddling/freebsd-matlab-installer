@@ -24,17 +24,34 @@ I personally recommend using math/octave instead.  It's free, runs
 on pretty much any OS, can be installed in minutes on FreeBSD
 with "pkg install octave", and is highly
 compatible with Matlab.  Any differences are considered bugs by the
-Octave project.  I once had a conversation with a Matlab user that
+Octave project, though Octave will always lag behind the latest Matlab,
+obviously.
+
+Also, the Octave project won't have equivalents for every Matlab
+add-on, though they do have equivalents for most of the major ones.
+Chances are, Octave will do everything you need, especially if you're 
+willing to bend a little.
+
+I once had a conversation with a Matlab user that
 went something like this:
 
+```
 User:   We need a new Matlab license.
+
 Me:     OK, but that will cost $thousands and may take months to get through
 	purchasing.  Have you tried Octave?
+
 User:   Yes, we use Octave sometimes.
+
 Me:     How has it worked for you?
+
 User:   Quite well, actually.  It runs pretty much all our scripts,
 	unless we coded them in the latest Matlab version.
+
 Me:     Then stop coding in the latest Matlab version.  Then we won't have
 	to delay your research, waste the university's money on another
 	license, and waste I.T. time setting up and maintaining a license
 	server.
+```
+
+
