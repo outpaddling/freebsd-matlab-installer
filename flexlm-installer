@@ -1,0 +1,33 @@
+#!/bin/sh
+
+if [ $# != 1 ]; then
+    echo "Usage: $0 <install-dir>"
+    exit 1
+fi
+
+install_dir=$1
+
+# FLEXLM License Manager, if installed
+if [ -e ${install_dir}/etc/lmboot ]; then
+    ln -sf ${install_dir}/etc/lmboot /usr/local/etc/lmboot_TMW
+    ln -sf ${install_dir}/etc/lmdown /usr/local/etc/lmdown_TMW
+    install -m 0555 ${install_dir}/etc/flexlm.sh /usr/local/etc/rc.d
+    /usr/local/etc/rc.d/flexlm.sh start
+    echo "The following files or links were installed outside the Matlab"
+    echo "installation tree:"
+    echo ""
+    echo "      /usr/local/etc/lmboot_TMW"
+    echo "      /usr/local/etc/lmdown_TMW"
+    echo "      /usr/local/etc/rc.d/flexlm.sh"
+    echo ""
+    echo "You will need to manually remove them if you decide to deinstall"
+    echo "or deactivate flexlm."
+
+    matlabuser=`awk -F':' '$1 == "matlab"' /etc/passwd`
+    if [ "${matlabuser}" = "" ]; then
+	echo "There is no 'matlab' user on this system.  You must either create"
+	echo "one, or edit /usr/local/etc/rc.d/flexlm.sh to change the username"
+	echo "flexlm will run under.  Note that flexlm cannot be run as root."
+    fi
+fi
+

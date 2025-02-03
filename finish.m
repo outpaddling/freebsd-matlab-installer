@@ -1,0 +1,2 @@
+! $MATLAB/bin/finish.sh
+

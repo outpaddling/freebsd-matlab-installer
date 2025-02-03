@@ -1,0 +1,100 @@
+.TH MATLAB-INSTALLER 1    \" Section header
+.SH NAME
+.PP
+ 
+matlab-installer \- Easy installation of Linux Matlab on FreeBSD
+
+\" Convention:
+\" Underline anything that is typed verbatim - commands, etc.
+.SH SYNOPSIS
+.PP
+.nf 
+.na
+matlab-installer
+.ad
+.fi
+
+\" Optional sections
+.SH "DESCRIPTION"
+.B Matlab-installer
+is a script for automating the installation of Linux Matlab(r) on
+FreeBSD.
+
+All software required to run Matlab(r) on FreeBSD is installed as
+prerequisites to the matlab-installer FreeBSD port.
+
+To install Matlab(r):
+
+1. Install the matlab-installer port or package
+
+2. Obtain a Matlab(r) license.dat file, installation key, and media for
+Linux.
+
+3. Run
+.B matlab-installer
+and follow the on-screen instructions
+
+If you do not allow the Matlab(r) installer to create symbolic links
+in /usr/local/bin or another location in PATH, users will need the
+installation directory (e.g. /usr/local/MATLAB/R2012a) added to their PATH.
+
+Systems that do not have /dev/ptmx will need the pty kernel module loaded.
+To load it immediately, run the following:
+
+.nf
+.na
+sudo kldload pty
+.ad
+.fi
+
+To load it automatically at boot time, add the following to
+/boot/loader.conf:
+
+.nf
+.na
+pty_load="YES"
+.ad
+.fi
+
+.B Matlab-installer
+applies minimal patches to Matlab(r) for cleaner execution in the
+FreeBSD environment.  However, some user configuration is still necessary
+for utilizing online help files and MEX compilation.
+
+To use certain Unix shell commands, the built-in HTML help files, and MEX,
+add something like the following to your .cshrc or other startup scripts:
+
+.nf
+.na
+if ( $?ARCH ) then
+    && "$ARCH" == "glnx86" ) then
+    # Make sure mex uses Linux gcc, g++, gfortran
+    set path = (/compat/linux/bin /compat/linux/usr/bin $path)
+    
+    # Make sure FreeBSD Firefox finds correct libstdc++, etc.
+    setenv LD_LIBRARY_PATH /lib:/usr/lib:/usr/local/lib:$LD_LIBRARY_PATH
+    endif
+endif
+.ad
+.fi
+
+.SH ENVIRONMENT
+.nf
+.na
+ARCH, OSTYPE
+.ad
+.fi
+
+.SH "SEE ALSO"
+octave(1), freemat(1), scilab(1)
+
+.SH BUGS
+Please report bugs to the author and send patches in unified diff format.
+(man diff for more information)
+
+.SH AUTHOR
+.nf
+.na
+Jason Bacon
+http://www.acadix.biz
+

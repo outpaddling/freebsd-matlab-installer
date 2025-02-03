@@ -1,0 +1,9 @@
+# Install Linux compilers for MEX.  Install all common shells except tcsh
+# so that commands shelled-out from Matlab (e.g. mex) use Linux binaries
+# whenever possible.  Mex will not function with FreeBSD compilers.
+# Tcsh PATH hash table will not include both /compat/linux/bin and /bin, etc.
+# so it's better to use the FreeBSD tcsh and add /compat/linux bins to the
+# path.
+# Not needed if LD_LIBRARY_PATH is correct in shells started from Matlab
+#               ${LINUXBASE}/usr/bin/firefox:${PORTSDIR}/www/linux-firefox
+

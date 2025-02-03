@@ -1,0 +1,323 @@
+#!/bin/sh -e
+
+#########################################################################
+# Matlab FreeBSD installation script
+#
+# Author:   Jason W. Bacon
+#
+# Usage:
+#
+#   This script is a wrapper around the Matlab graphical installation
+#   utility.  It installs and updates license files for use with a
+#   FLEXlm license server, and contains workarounds for installing 
+#   Matlab on FreeBSD using Linux compatibility.
+#
+#   Redistribution and use in source and binary forms, with or without
+#   modification, are permitted provided that the following conditions are
+#   met:
+#
+#   Redistributions of source code must retain the above copyright notice,
+#   this list of conditions and the following disclaimer. Redistributions
+#   in binary form must reproduce the above copyright notice, this list of
+#   conditions and the following disclaimer in the documentation and/or
+#   other materials provided with the distribution. 
+#
+#   THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS
+#   IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
+#   TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+#   PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+#   OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+#   SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+#   LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+#   DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+#   THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+#   (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+#   OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
+
+pause()
+{
+    local junk
+    
+    printf "Press return to continue..."
+    read junk
+}
+
+
+if [ $# != 0 ]; then
+    printf "Usage: $0\n"
+    exit 1
+fi
+
+# Port PREFIX
+prefix="/usr/local"
+
+cat << EOM
+
+1.. R2012a
+2.. R2010b
+
+EOM
+
+ok=0
+while [ $ok != 1 ]; do
+    ok=1
+    selection=`auto-ask version "Please select a version from the menu above: " 1`
+    
+    case $selection in
+    1)
+	version=R2012a
+	;;
+    2)
+	version=R2010b
+	;;
+    *)
+	ok=0
+    esac
+done
+
+# Install into PREFIX/matlab
+install_dir=$prefix/MATLAB/$version
+
+license_file=`auto-ask license-file "Pathname of license file? " './license.dat'`
+if [ `echo $license_file | cut -c 1,1` != '/' ]; then
+    license_file="`pwd`/$license_file"
+fi
+
+# A little eye candy
+alias drawline='echo -e "\n====================================================================\n"'
+
+drawline
+cat << EOM
+Should this installation fail, please see the Matlab manual installation
+instructions in the FreeBSD Handbook.
+EOM
+drawline
+
+# Input installation source.  Offer standard CDROM mount point as a default.
+default_root=`awk '$1 == "/dev/cd0" || $1 == "/dev/acd0" { print $2 }' /etc/fstab`
+if [ $? != 0 ]; then
+    default_root="/cdrom"
+fi
+
+cat << EOM
+If you are using a remote license server, be sure to remove FLEXlm from
+the "Items to Install" list in the Matlab installer.
+
+EOM
+pause
+
+# Prime loop for 'install another disk' question at end
+ans='y'
+
+# Run installer from within install directory
+while [ "$ans" = "y" ]; do
+    drawline
+
+    # Disks in multiple CD set can be loaded in any order.
+    # FIXME: Is R2012a even available as multiple discs?
+    cat << EOM
+    
+If you are installing from CDs or DVDs, insert the first disc now.
+
+If you have an ISO image, mount it using mount_cd9660_image before continuing.
+
+Then, enter the full pathname of the directory containing the Matlab
+'install' script.
+
+EOM
+    root=`auto-ask root "Location of install sources?" "$default_root"`
+    if [ "$root" = "" ]; then
+	root="$default_root"
+    else
+	default_root="$root"
+    fi
+    
+    # Try to determine if this is loadable media
+    dev=`awk -v dir=$root '$2 == dir && $4 ~ "noauto" { print $1 }' /etc/fstab`
+    if [ "$dev" != '' ]; then
+	mount=1
+	printf "Mounting $dev...\n"
+	mount $root
+    else
+	mount=0
+    fi
+
+    if [ ! -d $install_dir ]; then
+	mkdir -p $install_dir
+	if [ $? != 0 ]; then
+	    Error creating $install_dir, aborting installation...
+	    Make sure you are logged in as root, or have appropriate
+	    permissions on the install directory.
+	    exit 1
+	fi
+    fi
+    
+    # License file must be in install directory when Matlab installer starts
+    printf "Installing skeletal license file...\n"
+    if [ ! -e $license_file ]; then
+	printf "Missing license file: $license_file\n"
+    fi
+    cp $license_file $install_dir
+
+    # Remove old links, if present
+    printf "Removing old links...\n"
+    for file in matlab mex mcc mbuild
+    do
+	rm -f /usr/local/bin/$file
+    done
+    
+    # Patch install script
+    printf "Patching install script...\n"
+    sed -e 's|/proc|/compat/linux/proc|g' \
+	-e 's|sse2 \.|sse2.|g' \
+	-e 's|/lib/libc.so.6|/compat/linux/lib/ld-linux.so.2 /compat/linux/lib/libc.so.6|g' \
+	$root/install > $install_dir/install.matlab
+    chmod 755 $install_dir/install.matlab
+    
+    # Link to working linux jre
+    # FIXME: Test with 1.6.0
+    for java_version in 1.7.0 1.6.0; do
+	if [ -e /usr/local/linux-sun-jdk$java_version ]; then
+	    break
+	fi
+    done
+
+    # Invoke the installer from a Linux shell so that it senses
+    # a valid environment.  Set PATH so that Linux binaries will be
+    # used where possible.  (FreeBSD expr does not
+    # support -r flag, so this will silence errors during install
+    # by using the Linux expr.)
+    # Alternative: Link Linux expr to /compat/linux/bin
+    savepath="$PATH"
+    PATH="/compat/linux/bin:/compat/linux/usr/bin:$PATH"
+    export PATH
+
+    # Test connection to X server and run graphical install if possible.
+    printf "Testing X11 connection...\n"
+    if ! xhost > /dev/null 2> /dev/null; then
+	cat << EOM
+Cannot run graphical installer and no text mode install available.
+If you used su to switch to root, try running
+
+    xauth list
+
+as the owner of the display.  This will output a line describing the
+authorization cookie for your display, such as:
+
+    myhost/unix:0 MIT-MAGIC-COOKIE-1 b7b84a4cca47b40bcab412581bf93f30
+
+Then, as root, run:
+
+    xauth add myhost/unix:0 MIT-MAGIC-COOKIE-1 b7b84a4cca47b40bcab412581bf93f30
+    
+EOM
+	exit 1
+    fi
+    
+    # Need a lot of temp space
+    space=`df -m /compat/linux/ | tail -1 | awk ' { print $4 }'`
+    if [ $space -lt 1000 ]; then
+	cat << EOM
+
+The Matlab installer requires a gigabyte or more temporary space under
+/compat/linux.
+
+You have only $space megabytes.  You can resolve this by moving the
+directory to a larger partition, e.g.
+
+umount linprocfs && mv /compat /usr && ln -s /usr/compat /
+mount linproc
+
+EOM
+    exit 1
+    fi
+    
+    # Must install from installation source dir
+    cd $root
+    printf "Running install script...\n"
+    installer_flags="-root $root -javadir /usr/local/linux-sun-jdk$java_version"
+    /compat/linux/bin/sh $install_dir/install.matlab $installer_flags
+    
+    # Restore old path without Linux bins so that the rest of the
+    # script runs native FreeBSD commands.
+    PATH="$savepath"
+    export PATH
+
+    # Unmount disk if necessary
+    if [ $mount = 1 ]; then
+	printf "Unmounting...\n"
+	umount $root
+    fi
+
+    printf "Done with $root.\n"
+    printf 'Install another disk? (y/[n]) '
+    read ans
+done
+
+    cat << EOM
+If you installed from an ISO CD image, don't forget to unmount the
+image using umount_cd9660_image.
+EOM
+
+# Patch oscheck
+# Also replace 
+sed -i .bak -e 's|sse2 \.|sse2.|g' \
+	    -e 's|/proc|/compat/linux/proc|g' \
+	    -e 's|ver=`/lib/libc.so.6|ver=`strings /compat/linux/lib/libc.so.6 \| awk ''$1 == "glibc" { print $2 }''` \#|g' \
+	    $install_dir/bin/util/oscheck.sh
+
+# Create Matlab launch script to set up Linux environment for Matlab.
+# Put Linux bin directories first in the path, so Matlab scripts will
+# use Linux binaries rather than the FreeBSD binaries wherever possible.
+# This will, at minimum, quiet the annoying 'invalid -r flag' errors 
+# produced by the FreeBSD expr command.
+
+script=$install_dir/bin/matlab
+# Rename original "matlab" script so it doesn't get run directly
+mv -f $script $script.sh
+
+# Replace "matlab" with wrapper that sets the environment and calls
+# the original as "matlab.sh"
+printf "Patching matlab startup script...\n"
+cat << EOM > $script
+#!/bin/sh
+
+# This PATH update will help MATLAB find tools, but won't help shelled-out
+# commands like MEX, since they start a new shell process, which may
+# run startup scripts like .cshrc or .bashrc.
+PATH="/compat/linux/bin:/compat/linux/usr/bin:\$PATH"
+export PATH
+$install_dir/bin/matlab.sh -glnx86 \$@
+EOM
+chmod 555 $script
+
+# Replaced with -javadir in installer_flags.
+# ln -s /usr/local/linux-sun-jdk$java_version/jre \
+#    $install_dir/sys/java/jre/glnx86/jre$java_version
+# mv $install_dir/sys/java/jre/glnx86/jre.cfg \
+#    $install_dir/sys/java/jre/glnx86/jre.cfg.orig
+# echo "$java_version" > $install_dir/sys/java/jre/glnx86/jre.cfg
+
+#############################################################################
+# Patch mexopts.sh to make Matlab run linux_base-gentoo compilers
+# This is no longer necessary since developing linux-f10-gcc* ports
+# Left here as documentation for those using linux_base-gentoo
+
+# sed -i '.bak' 's|gcc|/usr/local/gentoo-stage3/usr/bin/gcc|g' $install_dir/bin/mexopts.sh
+# sed -i '' 's|g++|/usr/local/gentoo-stage3/usr/bin/g++|g' $install_dir/bin/mexopts.sh
+# sed -i '' 's|g95|/usr/local/gentoo-stage3/usr/bin/g95|g' $install_dir/bin/mexopts.sh
+
+#############################################################################
+# Patch mex script to make Matlab run linux_base-f10 compilers
+
+sed -i '.bak' \
+    -e 's|#!/bin/sh|#!/compat/linux/bin/sh \
+\
+PATH=/compat/linux/bin:/compat/linux/usr/bin:$PATH \
+export PATH \
+|g' $install_dir/bin/mex | more
+
+# Tested on R2012a.  Does it work for 2010b as well?
+sed -i '.bak' 's|firefox|webbrowser|g' \
+    $install_dir/toolbox/matlab/helptools/web.m
+
